@@ -63,15 +63,28 @@ const getCustomers = async (req, res) => {
           status: { $ne: 'cancelled' }
         }).select('balance total');
 
+        // Get all payments for this customer
+        const payments = await Payment.find({ 
+          customer: customer._id,
+          status: 'completed'
+        }).select('amount totalAllocated');
+
         // Calculate total outstanding and total purchase from all sales
         const calculatedOutstanding = sales.reduce((sum, sale) => sum + sale.balance, 0);
         const calculatedTotalPurchase = sales.reduce((sum, sale) => sum + sale.total, 0);
+
+        // Calculate unallocated payments
+        const unallocatedPayments = payments.reduce((sum, payment) => {
+          return sum + (payment.amount - (payment.totalAllocated || 0));
+        }, 0);
 
         // Return customer with calculated values
         const customerObj = customer.toObject();
         customerObj.calculatedOutstanding = calculatedOutstanding;
         customerObj.outstandingAmount = calculatedOutstanding; // Override with calculated value
         customerObj.totalPurchase = calculatedTotalPurchase; // Override with calculated value
+        customerObj.unallocatedPayments = unallocatedPayments; // Add unallocated payments
+        customerObj.adjustedOutstanding = calculatedOutstanding - unallocatedPayments; // Net outstanding
         
         return customerObj;
       })
@@ -129,6 +142,12 @@ const getCustomer = async (req, res) => {
       .select('receiptNumber amount paymentMethod createdAt totalAllocated sales')
       .populate('sales.sale', 'invoiceNumber');
 
+    // Calculate unallocated payments (payments that haven't been fully allocated to sales)
+    const totalUnallocatedPayments = allPayments.reduce((sum, payment) => {
+      const remainingAmount = payment.amount - (payment.totalAllocated || 0);
+      return sum + remainingAmount;
+    }, 0);
+
     // Calculate aggregated statistics
     const salesStats = {
       totalSales: allSales.length,
@@ -142,24 +161,33 @@ const getCustomer = async (req, res) => {
         .reduce((sum, sale) => sum + Math.abs(sale.balance), 0),
       unpaidAmount: allSales
         .filter(s => s.balance > 0)
-        .reduce((sum, sale) => sum + sale.balance, 0)
+        .reduce((sum, sale) => sum + sale.balance, 0),
+      unallocatedPayments: totalUnallocatedPayments,
+      // Total credit includes both overpaid sales and unallocated payments
+      totalCredit: allSales
+        .filter(s => s.balance < 0)
+        .reduce((sum, sale) => sum + Math.abs(sale.balance), 0) + totalUnallocatedPayments
     };
 
     const paymentStats = {
       totalPayments: allPayments.length,
-      totalAmount: allPayments.reduce((sum, payment) => sum + payment.amount, 0)
+      totalAmount: allPayments.reduce((sum, payment) => sum + payment.amount, 0),
+      unallocatedAmount: totalUnallocatedPayments
     };
+
+    // Calculate adjusted outstanding (sales outstanding minus unallocated payments)
+    const adjustedOutstanding = salesStats.totalOutstanding - totalUnallocatedPayments;
 
     // Overall status
     let overallStatus = 'clear';
     let statusMessage = 'All payments are clear';
     
-    if (salesStats.totalOutstanding > 0.01) {
+    if (adjustedOutstanding > 0.01) {
       overallStatus = 'outstanding';
-      statusMessage = `Outstanding: ₹${salesStats.unpaidAmount.toFixed(2)}`;
-    } else if (salesStats.totalOutstanding < -0.01) {
+      statusMessage = `Outstanding: ₹${adjustedOutstanding.toFixed(2)}`;
+    } else if (adjustedOutstanding < -0.01) {
       overallStatus = 'credit';
-      statusMessage = `Extra paid (Credit): ₹${salesStats.overpaidAmount.toFixed(2)}`;
+      statusMessage = `Credit Balance: ₹${Math.abs(adjustedOutstanding).toFixed(2)}`;
     }
 
     res.json({
@@ -171,7 +199,8 @@ const getCustomer = async (req, res) => {
         salesStats,
         paymentStats,
         overallStatus,
-        statusMessage
+        statusMessage,
+        adjustedOutstanding // Include the adjusted outstanding that accounts for unallocated payments
       }
     });
   } catch (error) {

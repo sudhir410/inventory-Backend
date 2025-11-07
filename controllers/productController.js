@@ -179,6 +179,12 @@ const updateProduct = async (req, res) => {
         // Handle empty supplier field
         if (key === 'supplier' && (req.body[key] === '' || req.body[key] === null)) {
           product[key] = undefined;
+        } else if (key === 'price' || key === 'stock') {
+          // Handle nested objects - merge instead of replace
+          product[key] = {
+            ...product[key].toObject(),
+            ...req.body[key]
+          };
         } else {
           product[key] = req.body[key];
         }
