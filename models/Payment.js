@@ -71,7 +71,7 @@ paymentSchema.virtual('remainingAmount').get(function() {
 });
 
 // Index for better performance
-paymentSchema.index({ receiptNumber: 1 });
+// Note: receiptNumber already has unique index from field definition
 paymentSchema.index({ customer: 1 });
 paymentSchema.index({ paymentDate: -1 });
 paymentSchema.index({ createdBy: 1 });

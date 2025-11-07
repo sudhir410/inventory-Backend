@@ -7,6 +7,10 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 8000;
 
+// Trust proxy - enables proper client IP detection behind reverse proxies (nginx, load balancers)
+// This is needed for rate limiting and logging to work correctly in production
+app.set('trust proxy', 1);
+
 // CORS configuration - must be before other middleware
 app.use(cors())
 

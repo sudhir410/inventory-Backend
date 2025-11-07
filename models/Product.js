@@ -129,7 +129,7 @@ productSchema.virtual('stockStatus').get(function() {
 
 // Index for better search performance
 productSchema.index({ name: 'text', description: 'text', category: 'text' });
-productSchema.index({ sku: 1 });
+// Note: sku already has unique index from field definition
 productSchema.index({ category: 1 });
 productSchema.index({ 'stock.current': 1 });
 

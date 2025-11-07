@@ -121,7 +121,7 @@ saleSchema.post('save', async function() {
 });
 
 // Index for better performance
-saleSchema.index({ invoiceNumber: 1 });
+// Note: invoiceNumber already has unique index from field definition
 saleSchema.index({ customer: 1 });
 saleSchema.index({ createdAt: -1 });
 saleSchema.index({ paymentStatus: 1 });
